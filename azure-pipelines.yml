@@ -56,7 +56,7 @@ stages:
 # =============================
 - stage: DeployQA
 
-  displayName: Deploy to QA
+  displayName: Stage-QA
 
   dependsOn: Build
 
@@ -90,4 +90,38 @@ stages:
 
               slotName: 'staging-qa'
 
+              package: '$(Pipeline.Workspace)/drop/**/*.zip'
+# =============================
+# PRODUCTION DEPLOYMENT
+# =============================
+- stage: DeployProduction
+
+  displayName: Stage-Prod
+
+  dependsOn: DeployQA
+
+  jobs:
+
+  - deployment: ProdDeploy
+
+    environment: Production
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+
+            inputs:
+
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+
+              appName: 'AzureDevOpsEmployeeApp'
+              resourceGroupName: 'RGAzureDevOps'
               package: '$(Pipeline.Workspace)/drop/**/*.zip'
