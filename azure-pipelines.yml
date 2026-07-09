@@ -1,17 +1,127 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - master
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'windows-latest'
 
-steps:
-- task: DotNetCoreCLI@2
-  inputs:
-    command: 'build'
-    projects: '**/*.csproj'
-    arguments: '--configuration Release'
+variables:
+  buildConfiguration: 'Release'
+
+stages:
+
+# =============================
+# BUILD
+# =============================
+- stage: Build
+  displayName: Build Application
+
+  jobs:
+  - job: BuildJob
+
+    steps:
+
+    - task: UseDotNet@2
+      inputs:
+        packageType: sdk
+        version: '9.x'
+
+    - task: DotNetCoreCLI@2
+      displayName: Restore
+      inputs:
+        command: restore
+        projects: '**/*.csproj'
+
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        command: build
+        projects: '**/*.csproj'
+        arguments: '--configuration Release'
+
+    - task: DotNetCoreCLI@2
+      displayName: Publish
+      inputs:
+        command: publish
+        publishWebProjects: true
+        arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+        zipAfterPublish: true
+
+    - publish: $(Build.ArtifactStagingDirectory)
+      artifact: drop
+
+
+
+# =============================
+# QA DEPLOYMENT
+# =============================
+- stage: DeployQA
+
+  displayName: Stage-QA
+
+  dependsOn: Build
+
+  jobs:
+
+  - deployment: QADeploy
+
+    environment: QA
+
+    strategy:
+      runOnce:
+
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+
+            inputs:
+
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+              appName: 'AzureDevOpsEmployeeApp'
+
+              deployToSlotOrASE: true
+
+              resourceGroupName: 'RGAzureDevOps'
+
+              slotName: 'staging-qa'
+
+              package: '$(Pipeline.Workspace)/drop/**/*.zip'
+# =============================
+# PRODUCTION DEPLOYMENT
+# =============================
+- stage: DeployProduction
+
+  displayName: Stage-Prod
+
+  dependsOn: DeployQA
+
+  jobs:
+
+  - deployment: ProdDeploy
+
+    environment: Production
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+
+            inputs:
+
+              azureSubscription: 'Azure-ServiceConnection'
+              appType: 'webApp'
+
+              appName: 'AzureDevOpsEmployeeApp'
+              resourceGroupName: 'RGAzureDevOps'
+              package: '$(Pipeline.Workspace)/drop/**/*.zip'
